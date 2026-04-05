@@ -1,0 +1,7 @@
+easyocr
+opencv-python
+streamlit
+numpy
+pillow
+pyttsx3
+deep-translator
