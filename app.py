@@ -1,27 +1,25 @@
 import streamlit as st
-import easyocr
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw
 import re
 
-# Optional features
-try:
-    import pyttsx3
-    TTS_AVAILABLE = True
-except:
-    TTS_AVAILABLE = False
-
+# Optional translation
 try:
     from deep_translator import GoogleTranslator
     TRANS_AVAILABLE = True
 except:
     TRANS_AVAILABLE = False
 
-
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="Smart OCR System", layout="wide")
 st.title("🚀 AI-Powered Smart Document & Vehicle OCR System")
+
+# ---------------- CACHE OCR ----------------
+@st.cache_resource
+def load_reader(lang):
+    import easyocr
+    return easyocr.Reader(lang)
 
 # ---------------- SIDEBAR ----------------
 mode = st.sidebar.selectbox("Select Mode", ["Document OCR", "Vehicle OCR"])
@@ -40,22 +38,24 @@ if uploaded_file:
         st.subheader("📷 Uploaded Image")
         st.image(image, use_column_width=True)
 
-    # ---------------- PREPROCESSING ----------------
+    # ---------------- PREPROCESS ----------------
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 11, 2
+    )
 
     # ---------------- OCR ----------------
     with st.spinner("🔍 Extracting text..."):
-        reader = easyocr.Reader(language)
+        reader = load_reader(language)
         results = reader.readtext(thresh)
 
     draw = ImageDraw.Draw(image)
-
     extracted_text = ""
     structured_data = {}
 
     for (bbox, text, prob) in results:
-        # Bounding box color
         color = "green" if prob > 0.7 else "red"
 
         draw.rectangle(
@@ -73,7 +73,6 @@ if uploaded_file:
         if re.search(r'₹?\d+', text):
             structured_data["Amount"] = text
 
-        # ---------------- VEHICLE NUMBER ----------------
         if mode == "Vehicle OCR":
             if re.match(r'[A-Z]{2}\d{2}[A-Z]{2}\d{4}', text):
                 structured_data["Vehicle Number"] = text
@@ -92,7 +91,7 @@ if uploaded_file:
             "ocr_output.txt"
         )
 
-    # Show image with boxes
+    # ---------------- IMAGE OUTPUT ----------------
     st.subheader("🔍 Detected Text Image")
     st.image(image, use_column_width=True)
 
@@ -101,7 +100,10 @@ if uploaded_file:
     search = st.text_input("Enter keyword")
 
     if search:
-        matches = [line for line in extracted_text.split("\n") if search.lower() in line.lower()]
+        matches = [
+            line for line in extracted_text.split("\n")
+            if search.lower() in line.lower()
+        ]
         if matches:
             for m in matches:
                 st.success(m)
@@ -117,14 +119,3 @@ if uploaded_file:
                 st.write(translated)
             except:
                 st.error("Translation failed")
-
-    # ---------------- TEXT TO SPEECH ----------------
-    if TTS_AVAILABLE:
-        st.subheader("🔊 Text to Speech")
-        if st.button("Speak Text"):
-            try:
-                engine = pyttsx3.init()
-                engine.say(extracted_text)
-                engine.runAndWait()
-            except:
-                st.error("TTS failed")
